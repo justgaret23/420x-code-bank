@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang='en'>
+  <head>
+    <style>body{ margin:0; background:black }</style>
+  </head>
+  <body>
+    <canvas id='gl'></canvas>
+  </body>
+  <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.0.7/dist/tweakpane.min.js"></script>
+  <script language="javascript" src="https://npmcdn.com/regl/dist/regl.js"></script>
+  <!-- vertex shader, as simple as possible -->
+  <script id='vertex' type='x-shader/x-vertex'>
+    attribute vec2 a_position;
+
+    void main() {
+      gl_Position = vec4( a_position, 0, 1 );
+    }
+  </script>
+
+  <!-- fragment shader -->
+  <script id='fragment' type='x-shader/x-fragment'>
+    #ifdef GL_ES
+    precision mediump float;
+    #endif
+
+    uniform float time;
+    // contains resolution of our canvas, in pixels
+    uniform vec2 resolution;
+
+    // uniform pointing to our opengl texture
+    uniform sampler2D uSampler;
+
+    uniform vec3 noiseColor;
+    uniform float noiseFrequency;
+    uniform float bubbleFrequency;
+    uniform float shadeAmount;
+    uniform float bubbleDensity;
+    uniform float bubbleSize;
+    uniform float mouse_x;
+    uniform float mouse_y;
+
+    float random (vec2 st) {
+      return fract(sin(dot(st.xy, vec2(12.9898,78.233)))*43758.5453123);
+    }
+
+    //LAVA LAMP HELPER FUNCTION FROM BOOK
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+    float snoise(vec2 v) {
+      const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+                          0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+                          -0.577350269189626,  // -1.0 + 2.0 * C.x
+                          0.024390243902439); // 1.0 / 41.0
+      vec2 i  = floor(v + dot(v, C.yy) );
+      vec2 x0 = v -   i + dot(i, C.xx);
+      vec2 i1;
+      i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+      vec4 x12 = x0.xyxy + C.xxzz;
+      x12.xy -= i1;
+      i = mod289(i); // Avoid truncation effects in permutation
+      vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+          + i.x + vec3(0.0, i1.x, 1.0 ));
+  
+      vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+      m = m*m ;
+      m = m*m ;
+      
+      //Modify param 1  1. - 10.
+      vec3 x = bubbleDensity * fract(p * C.www) - 1.0;
+      
+      //maybe don't Modify - param - 0. - 3.
+      vec3 h = abs(x) - 2.;
+      vec3 ox = floor(x + 0.5);
+      vec3 a0 = x - ox;
+      m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+      vec3 g;
+      g.x  = a0.x  * x0.x  + h.x  * x0.y;
+      g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+      return 100.0 * dot(m, g);
+    }
+
+    void main() {
+      // gl_FragCoord is measured in pixels, but texture2D expects
+      // normalized coordinates (between 0–1). If we divide gl_FragCoord
+      // by our resolution, we'll get a normalized position value
+      vec2 st = gl_FragCoord.xy / resolution;
+      
+      // just get rgb from the texture to invert.
+      vec3 color = texture2D( uSampler, st ).rgb;
+      vec2 pos = vec2(st*3.);
+
+      float pct = distance(st, vec2(mouse_x, mouse_y));
+
+      float DF = 0.0;
+
+      // Add a random position
+      float a = 1.0;
+      vec2 vel = vec2(time*.01);
+      DF += snoise(pos+vel)*.25+.25;
+
+      // Add a random position
+      a = snoise(pos*vec2(cos(time*0.15),sin(time*0.1))*0.1)*3.1415;
+      vel = vec2(0.005 * cos(a),0.005 * sin(a));
+      DF += snoise(pos+vel)*.25+.25;
+
+      //Modify first smoothstep param - 0.4 - 0.75
+      color += (vec3( smoothstep(bubbleSize,.75,fract(DF)) ) * noiseColor);
+
+      //vec3 noise = (vec3( pow(random( st  ), 10.)) * noiseColor) ;
+    
+      
+      gl_FragColor = vec4( vec3( color ), 1. );
+    }
+  </script>
+
+  <script type='text/javascript'>
+    // kinda global variables... upvalues to each closure of each function in this script tag
+    let gl, uTime, uRes, uColor, uBubbleDensity, uBubbleSize, uMouseX, uMouseY, drawProgram, videoTexture, PARAMS;
+
+    const size = 768
+    window.onload = function() {
+      const canvas = document.getElementById( 'gl' )
+      gl = canvas.getContext( 'webgl2' )
+      canvas.width = canvas.height = size
+      
+      // define drawing area of webgl canvas. bottom corner, width / height
+      // XXX can't remember why we need the *2!
+      gl.viewport( 0,0,gl.drawingBufferWidth*2, gl.drawingBufferHeight*2 )
+
+      // create a buffer object to store vertices
+      const buffer = gl.createBuffer()
+
+      // point buffer at graphic context's ARRAY_BUFFER
+      gl.bindBuffer( gl.ARRAY_BUFFER, buffer )
+
+      // create two triangles (three vertices each) that fill entire canvas,
+      // with coordinates measured from -1 to 1.
+      const triangles = new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1
+      ])
+
+      // initialize memory for buffer and populate it. Give
+      // open gl hint contents will not change dynamically.
+      gl.bufferData( gl.ARRAY_BUFFER, triangles, gl.STATIC_DRAW )
+
+      //************** CREATE SHADERS ****************\\
+      // create vertex shader
+      let shaderScript = document.getElementById('vertex')
+      let shaderSource = shaderScript.text
+      // create shader object
+      const vertexShader = gl.createShader( gl.VERTEX_SHADER )
+      // define source text for our shader
+      gl.shaderSource( vertexShader, shaderSource )
+      // compile shader
+      gl.compileShader( vertexShader )
+
+      // create fragment shader
+      shaderScript = document.getElementById('fragment')
+      shaderSource = shaderScript.text
+      const fragmentShader = gl.createShader( gl.FRAGMENT_SHADER )
+      gl.shaderSource( fragmentShader, shaderSource )
+      gl.compileShader( fragmentShader )
+
+      if( gl.getShaderParameter( fragmentShader, gl.COMPILE_STATUS) !== true ) {
+        let log = gl.getShaderInfoLog( fragmentShader )
+        gl.deleteShader( fragmentShader )
+
+        //console.log( source )
+        console.log( log )
+
+        return null
+    }
+
+      // create shader program, which links vertex and fragment shaders
+      drawProgram = gl.createProgram()
+      gl.attachShader( drawProgram, vertexShader )
+      gl.attachShader( drawProgram, fragmentShader )
+      // report any errors in the fragment shader
+      console.log( gl.getShaderInfoLog( fragmentShader ) )
+      gl.linkProgram( drawProgram )
+      gl.useProgram( drawProgram )
+      
+      /* ALL ATTRIBUTE/UNIFORM INITIALIZATION MUST COME AFTER 
+      CREATING/LINKING/USING THE SHADER PROGAM */
+      
+      // find a pointer to the uniform "time" in our fragment shader
+      uTime = gl.getUniformLocation( drawProgram, 'time' ) 
+      uRes = gl.getUniformLocation( drawProgram, 'resolution' )
+      uColor = gl.getUniformLocation(drawProgram, 'noiseColor')
+      uBubbleDensity = gl.getUniformLocation(drawProgram, 'bubbleDensity');
+      uBubbleSize = gl.getUniformLocation(drawProgram, 'bubbleSize');
+      uMouseX = gl.getUniformLocation(drawProgram, 'mouse_x');
+      uMouseY = gl.getUniformLocation(drawProgram, 'mouse_y');
+      // send uniform values for uRes up to gpu
+
+      gl.uniform1f( uTime, 0 );
+      //gl.uniform1f(uBubbleDensity, 0);
+      //console.log("COLOR: ", uColor, uRes, uTime );
+      gl.uniform2f( uRes, size, size )
+
+      PARAMS = {
+          color: {r: 255, g: 127, b: 0},
+          bubbleDensity: 4.0,
+          bubbleSize: 0.5
+      }
+      //MOUSE EVENTS!
+
+      let AMORTIZATION = 0.95;
+      let drag = false;
+      let old_x, old_y;
+      let dX = 0, dY = 0;
+      let currentMousePosition = {x: 0, y: 0};
+
+      let mouseDown = function(e) {
+        drag = true;
+        currentMousePosition = {x: event.clientX - rect.left, y: event.clientY - rect.top};
+        console.log("Mouse PRESS!");
+        e.preventDefault();
+        return false;
+      };
+
+      let mouseUp = function(e){
+        console.log("Mouse RELEASE!");
+        drag = false;
+      };
+
+      let mouseMove = function(e) {
+        if (!drag) return false;
+        currentMousePosition = {x: event.clientX - rect.left, y: event.clientY - rect.top};
+        console.log("Mouse schmoove!");
+        e.preventDefault();
+      };
+
+      canvas.addEventListener("mousedown", mouseDown, false);
+      canvas.addEventListener("mouseup", mouseUp, false);
+      canvas.addEventListener("mouseout", mouseUp, false);
+      canvas.addEventListener("mousemove", mouseMove, false);
+      
+
+      //TWEAKPANE
+      const pane = new Tweakpane.Pane();
+      pane.addInput(PARAMS, 'color');
+      pane.addInput(PARAMS, 'bubbleDensity', {
+        min: 1.0,
+        max: 10.0,
+      });
+      pane.addInput(PARAMS, 'bubbleSize', {
+        min: 0.4,
+        max: 0.75,
+      });
+
+      // get position attribute location in shader
+      var position = gl.getAttribLocation( drawProgram, 'a_position' )
+      // enable the attribute
+      gl.enableVertexAttribArray( position )
+      // this will point to the vertices in the last bound array buffer.
+      // In this example, we only use one array buffer, where we're storing 
+      // our vertices
+      gl.vertexAttribPointer( position, 2, gl.FLOAT, false, 0,0 )
+      
+      video = getVideo()
+    }
+    
+    function getVideo() {
+      const video = document.createElement('video');
+
+      // request video stream
+      navigator.mediaDevices.getUserMedia({
+        video:true
+      }).then( stream => { 
+        // this block happens when the video stream has been successfully requested
+        video.srcObject = stream
+        video.play()
+        makeTexture()
+      }) 
+        
+      return video
+    }
+
+    function getRelativeMousePosition(event, target) {
+      target = target || event.target;
+      var rect = target.getBoundingClientRect();
+
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      }
+    }
+
+    // assumes target or event.target is canvas
+    function getNoPaddingNoBorderCanvasRelativeMousePosition(event, target) {
+      target = target || event.target;
+      var pos = getRelativeMousePosition(event, target);
+
+      pos.x = pos.x * target.width  / target.clientWidth;
+      pos.y = pos.y * target.height / target.clientHeight;
+
+      return pos;  
+    }
+    
+    function makeTexture() {
+      // create an OpenGL texture object
+      videoTexture = gl.createTexture()
+      
+      // this tells OpenGL which texture object to use for subsequent operations
+      gl.bindTexture( gl.TEXTURE_2D, videoTexture )
+        
+      // since canvas draws from the top and shaders draw from the bottom, we
+      // have to flip our canvas when using it as a shader.
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+      // how to map when texture element is more than one pixel
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR )
+      // how to map when texture element is less than one pixel
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR )
+      
+      // you must have these properties defined for the video texture to
+      // work correctly at non-power-of-2 sizes
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE )
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE )
+
+      
+      
+      render()
+    }
+
+    // keep track of time via incremental frame counter
+    let time = 0
+    function render() {
+      // schedules render to be called the next time the video card requests 
+      // a frame of video
+      window.requestAnimationFrame( render )
+      
+      // update time on CPU and GPU
+      time++
+      gl.uniform1f( uTime, time )
+      gl.uniform1f(uBubbleDensity, PARAMS.bubbleDensity);
+      gl.uniform1f(uBubbleSize, PARAMS.bubbleSize);
+      gl.uniform3f( uColor, PARAMS.color.r, PARAMS.color.g, PARAMS.color.b )
+
+      gl.texImage2D( 
+        gl.TEXTURE_2D,    // target: you will always want gl.TEXTURE_2D
+        0,                // level of detail: 0 is the base
+        gl.RGBA, gl.RGBA, // color formats
+        gl.UNSIGNED_BYTE, // type: the type of texture data; 0-255
+        video             // pixel source: could also be video or image
+      )
+      
+      // draw triangles using the array buffer from index 0 to 6 (6 is count)
+      gl.drawArrays( gl.TRIANGLES, 0, 6 )
+    }
+  </script>
+
+</html>

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang='en'>
+  <head>
+    <style>body{ margin:0 }</style>
+  </head>
+  <body>
+    <canvas id='gl'></canvas>
+  </body>
+  <!-- vertex shader, as simple as possible -->
+  <script id='vertex' type='x-shader/x-vertex'>#version 300 es
+    precision mediump float;
+    in vec4 a_position;
+
+    //will be send to fragment
+    out vec4 out_vpos;
+
+    void main() {
+        float x = a_position.x + a_position.z;
+        if( x >= 1. ) x = -1.;
+        
+        gl_PointSize = 10.;
+        out_vpos = vec4( x, a_position.y, a_position.z, 1.);
+        
+        gl_Position = out_vpos;
+    }
+  </script>
+
+  <script id='fragment' type='x-shader/x-fragment'>#version 300 es
+    precision mediump float;
+    
+    //in - information coming into the shader
+    //out - sending info somewhere
+    in vec4 out_vpos;
+
+    uniform float time;
+    uniform vec2 resolution;
+    
+    out vec4 o_frag;
+    
+    void main() {
+      o_frag = vec4(0.5, out_vpos.z * 50., 0.1, 0.1);
+    }
+  </script>
+
+
+  <script type='text/javascript'>
+    // "global" variables
+    let gl, uTime, buffer1, buffer2;
+    let position;
+    let particleCount = 1024;
+
+    window.onload = function() {
+      const canvas = document.getElementById( 'gl' )
+      gl = canvas.getContext( 'webgl2' )
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+
+      // define drawing area of canvas. bottom corner, width / height
+      gl.viewport( 0,0,gl.drawingBufferWidth, gl.drawingBufferHeight )
+
+      // create a buffer object to store vertices
+        // these are deliberate globals, alternatively, you could declare them outside
+        // of the onload function. they need to also be accessed inside of render()
+        const particleData = new Float32Array( particleCount * 4 )
+            for( let i = 0; i < particleCount * 4; i+= 4 ) {
+            particleData[ i ] = -1
+            particleData[ i + 1 ] = -1 + Math.random() * 2
+            particleData[ i + 2] = Math.random() * .025
+            }
+
+            // create a buffer object to store vertices
+            buffer1 = gl.createBuffer()
+            buffer2 = gl.createBuffer()
+
+            // point buffer at graphic context's ARRAY_BUFFER
+            gl.bindBuffer( gl.ARRAY_BUFFER, buffer1 )
+            // we will be constantly updating this buffer data
+            gl.bufferData( gl.ARRAY_BUFFER, particleData, gl.DYNAMIC_COPY )
+
+            gl.bindBuffer( gl.ARRAY_BUFFER, buffer2 )
+            // for each particle (vertex) we need four numbers, each with 4 bytes (32 bits)
+            gl.bufferData( gl.ARRAY_BUFFER, particleCount * 4 * 4, gl.DYNAMIC_COPY )
+
+      // create vertex shader
+      let shaderScript = document.getElementById('vertex')
+      let shaderSource = shaderScript.text
+      const vertexShader = gl.createShader( gl.VERTEX_SHADER )
+      gl.shaderSource( vertexShader, shaderSource );
+      gl.compileShader( vertexShader )
+
+      // create fragment shader
+      shaderScript = document.getElementById('fragment')
+      shaderSource = shaderScript.text
+      const fragmentShader = gl.createShader( gl.FRAGMENT_SHADER )
+      gl.shaderSource( fragmentShader, shaderSource );
+      gl.compileShader( fragmentShader )
+
+      // create shader program
+      const program = gl.createProgram()
+      gl.attachShader( program, vertexShader )
+      gl.attachShader( program, fragmentShader )
+
+        //Transform feedback. WE NEED TO DO THIS BEFORE LINKING FOR IT TO WORK
+        transformFeedback = gl.createTransformFeedback()
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback)
+        gl.transformFeedbackVaryings( program, ['out_vpos'], gl.SEPARATE_ATTRIBS )
+
+      gl.linkProgram( program )
+      gl.useProgram( program )
+
+      
+      
+      /* ALL ATTRIBUTE/UNIFORM INITIALIZATION MUST COME AFTER 
+      CREATING/LINKING/USING THE SHADER PROGAM */
+      
+      // find a pointer to the uniform "time" in our fragment shader
+      uTime = gl.getUniformLocation( program, 'time' ) 
+      const uRes = gl.getUniformLocation( program, 'resolution' )
+      gl.uniform2f( uRes, window.innerWidth, window.innerHeight )
+
+      // get position attribute location in shader
+      position = gl.getAttribLocation( program, 'a_position' )
+      // enable the attribute
+      gl.enableVertexAttribArray( position )
+      // this will point to the vertices in the last bound array buffer.
+      // In this example, we only use one array buffer, where we're storing 
+      // our vertices
+      //gl.vertexAttribPointer( position, 2, gl.FLOAT, false, 0,0 )
+      
+      //Enable blending for smoother animation
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+
+      render()
+    }
+
+    // keep track of time via incremental frame counter
+    let time = 0
+    function render() {
+        // schedules render to be called the next time the video card requests 
+        // a frame of video
+        
+        window.requestAnimationFrame( render )
+        gl.clearColor(0,0,0,1)
+        gl.clear(gl.COLOR_BUFFER_BIT)
+        
+        // update time on CPU and GPU
+        time++
+        gl.uniform1f( uTime, time )
+
+        gl.bindBuffer( gl.ARRAY_BUFFER, buffer1 )
+        gl.vertexAttribPointer( position, 4, gl.FLOAT, false, 0,0 )
+        gl.bindBufferBase( gl.TRANSFORM_FEEDBACK_BUFFER, 0, buffer2 )
+        
+        gl.beginTransformFeedback( gl.POINTS )
+        gl.drawArrays( gl.POINTS, 0, particleCount )
+        gl.endTransformFeedback()
+        
+        gl.bindBufferBase( gl.TRANSFORM_FEEDBACK_BUFFER, 0, null )
+        
+        let tmp = buffer1;  buffer1 = buffer2;  buffer2 = tmp
+    }
+  </script>
+
+</html>
