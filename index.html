@@ -36,6 +36,7 @@
     uniform float shadeAmount;
     uniform float bubbleDensity;
     uniform float bubbleSize;
+    uniform float bubbleDistortion;
     uniform float mouse_x;
     uniform float mouse_y;
 
@@ -92,12 +93,12 @@
 
       float pct = distance(st, vec2(mouse_x, mouse_y));
 
-      float DF = 0.0;
+      float DF =.0;
 
       // Add a random position
       float a = 1.0;
       vec2 vel = vec2(time*.01);
-      DF += snoise(pos+vel)*.25+.25;
+      DF += snoise(bubbleDistortion * pos+vel)*.25+.25;
 
       // Add a random position
       a = snoise(pos*vec2(cos(time*0.15),sin(time*0.1))*0.1)*3.1415;
@@ -116,7 +117,7 @@
 
   <script type='text/javascript'>
     // kinda global variables... upvalues to each closure of each function in this script tag
-    let gl, uTime, uRes, uColor, uBubbleDensity, uBubbleSize, uMouseX, uMouseY, drawProgram, videoTexture, PARAMS;
+    let gl, uTime, uRes, uColor, uBubbleDensity, uBubbleSize, uBubbleDistortion, uMouseX, uMouseY, drawProgram, videoTexture, PARAMS;
 
     const size = 768
     window.onload = function() {
@@ -195,6 +196,7 @@
       uColor = gl.getUniformLocation(drawProgram, 'noiseColor')
       uBubbleDensity = gl.getUniformLocation(drawProgram, 'bubbleDensity');
       uBubbleSize = gl.getUniformLocation(drawProgram, 'bubbleSize');
+      uBubbleDistortion = gl.getUniformLocation(drawProgram, 'bubbleDistortion');
       uMouseX = gl.getUniformLocation(drawProgram, 'mouse_x');
       uMouseY = gl.getUniformLocation(drawProgram, 'mouse_y');
       // send uniform values for uRes up to gpu
@@ -207,7 +209,8 @@
       PARAMS = {
           color: {r: 255, g: 127, b: 0},
           bubbleDensity: 4.0,
-          bubbleSize: 0.5
+          bubbleSize: 0.5,
+          bubbleDistortion: 1.0
       }
       //MOUSE EVENTS!
 
@@ -253,6 +256,10 @@
       pane.addInput(PARAMS, 'bubbleSize', {
         min: 0.4,
         max: 0.75,
+      });
+      pane.addInput(PARAMS, 'bubbleDistortion', {
+        min: 0.1,
+        max: 20.0,
       });
 
       // get position attribute location in shader
@@ -342,6 +349,7 @@
       gl.uniform1f( uTime, time )
       gl.uniform1f(uBubbleDensity, PARAMS.bubbleDensity);
       gl.uniform1f(uBubbleSize, PARAMS.bubbleSize);
+      gl.uniform1f(uBubbleDistortion, PARAMS.bubbleDistortion);
       gl.uniform3f( uColor, PARAMS.color.r, PARAMS.color.g, PARAMS.color.b )
 
       gl.texImage2D( 
