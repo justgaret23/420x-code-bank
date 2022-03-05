@@ -2,6 +2,7 @@ import simulation_frag from './simulation.frag.glsl'
 import simulation_vert from './simulation.vert.glsl'
 import render_frag from './render.frag.glsl'
 import render_vert from './render.vert.glsl'
+import {Pane} from 'tweakpane'
 
 // "global" variables
 let gl,
@@ -9,7 +10,8 @@ let gl,
   framebuffer,
   simulationProgram, simulationPosition,
   renderProgram,
-  buffers, uTime;
+  buffers, uTime, uBoidDisplacement, uGustDirection,
+  uCongregateLocation, uCongregationSpeed, uInvertRule;
 
 const textures = [],
       agentCount = 500
@@ -36,7 +38,12 @@ function render() {
   gl.useProgram(simulationProgram)
   
   time++
-  gl.uniform1f( uTime, time )  
+  gl.uniform1f(uTime, time)  
+  gl.uniform1f(uBoidDisplacement, PARAMS.uniBoidDisplacement);
+  gl.uniform1f(uCongregationSpeed, PARAMS.congregationSpeed);
+  gl.uniform1f(uInvertRule, PARAMS.invertRule);
+  gl.uniform2f(uCongregateLocation, PARAMS.congregateLocation.x, PARAMS.congregateLocation.y);
+
 
   gl.bindFramebuffer( gl.FRAMEBUFFER, framebuffer )
   
@@ -116,7 +123,39 @@ function makeSimulationUniforms() {
   // number of agents in our flock
   const count  = gl.getUniformLocation( simulationProgram, 'agentCount' )
   gl.uniform1f(count, agentCount)
-  uTime = gl.getUniformLocation( simulationProgram, 'time' )
+  uTime = gl.getUniformLocation(simulationProgram, 'time')
+  uBoidDisplacement = gl.getUniformLocation(simulationProgram, 'uniBoidDisplacement');
+  uGustDirection = gl.getUniformLocation(simulationProgram, 'gustDirection');
+  uCongregateLocation = gl.getUniformLocation(simulationProgram, 'congregateLocation');
+  uCongregationSpeed = gl.getUniformLocation(simulationProgram, 'congregationSpeed');
+  uInvertRule = gl.getUniformLocation(simulationProgram, 'invertRule');
+  
+  PARAMS = {
+    uniBoidDisplacement: 0.1,
+    gustDirection: { x: 0.000, y: 0.000 },
+    congregateLocation: { x: 0.5, y: 0.5 },
+    congregationSpeed: 1000.0,
+    invertRule: false
+  }
+
+  const pane = new Pane();
+  pane.addInput(PARAMS, 'invertRule');
+  pane.addInput(PARAMS, 'uniBoidDisplacement', {
+    min: 0.01,
+    max: 0.3,
+  });
+  pane.addInput(PARAMS, 'congregationSpeed', {
+    min: 500,
+    max: 10000,
+  });
+  pane.addInput(PARAMS, 'gustDirection', {
+    picker: 'inline',
+    expanded: true
+  });
+  pane.addInput(PARAMS, 'congregateLocation', {
+    picker: 'inline',
+    expanded: true
+  });
 }
 
 /**
@@ -199,13 +238,14 @@ function makeRenderPhase() {
 function makeTextures() {
   textures[0] = gl.createTexture()
   gl.bindTexture( gl.TEXTURE_2D, textures[0] )
+  gl.getExtension('EXT_color_buffer_float');
   
   gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE )
   gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE )
   gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST )
   gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST )
   // width = agentCount, height = 1
-  gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, agentCount, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null )
+  gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA32F, agentCount, 1, 0, gl.RGBA, gl.FLOAT, null )
 
   textures[1] = gl.createTexture()
   gl.bindTexture( gl.TEXTURE_2D, textures[1] )
@@ -213,5 +253,5 @@ function makeTextures() {
   gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE )
   gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST )
   gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST )
-  gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, agentCount, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null )
+  gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA32F, agentCount, 1, 0, gl.RGBA, gl.FLOAT, null )
 }

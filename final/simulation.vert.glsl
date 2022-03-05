@@ -9,88 +9,85 @@ uniform sampler2D flock;
 //size of flock
 uniform float agentCount;
 uniform float time;
+uniform float uniBoidDisplacement;
+uniform vec2 gustDirection;
+uniform vec2 congregateLocation;
+uniform float congregationSpeed;
+uniform float velocityLimit;
+uniform bool invertRule;
 
 //newly calculated position
 out vec4 agent_out;
 
-
-vec2 goToCenter(vec2 boid){
-  vec2 perceivedCenter = vec2(0.0, 0.0);
-  vec4 agent  = vec4(0.0, 0.0, 0.0, 0.0);
-
-  //add agent/xy to perceived center
-  perceivedCenter += agent.xy;
-
-  //Divide perceivedCenter by total number of agents
-  float totalAgents = agentCount - 1.0;
-  perceivedCenter /= vec2(totalAgents, totalAgents);
-
-  vec2 newCenter = perceivedCenter - agent.xy;
-  perceivedCenter -= boid;
-  perceivedCenter /= 100.0;
-
-  return perceivedCenter;
-}
-
-bool checkPosition(vec2 agent, vec2 boid){
-  if(distance(agent, boid) > 100.0){
-       return true;
-  } else {
-    return false;
-  }
-}
-
-/**
-* boid rule that instructs the boids to stay away from each other
+/*
+Bind positions of vector
 */
-vec2 keepAway(vec2 boid){
-  vec2 c = vec2(0.0, 0.0);
-  for(int i = 0; i < int( agentCount ); i++ ){
-    // get the agent
-    vec4 agent  = texelFetch( flock, ivec2(i,0), 0 );
-    //compare the boid against every other boid except for itself
-    if(boid != agent.xy){
-      if(checkPosition(agent.xy, boid)){
-        vec2 smallAgent = vec2(agent.x/1.0, agent.y/1.0);
-        vec2 smallBoid = vec2(boid.x/1.0, boid.y/1.0);
-        c = c - distance(agent.xy, boid);
-        //c = c - (agent.xy - boid);
-      }
+vec4 bindPositions(vec4 agent){
+  float flockXMin = -1.;
+  float flockYMin = -1.;
+  float flockXMax = 1.;
+  float flockYMax = 1.;
 
-    }
+  //TODO: inverse velocity depending on where it is
+  //bound position rule
+  if(agent.x < flockXMin) {
+    agent.x *= -50.;
+  } else if(agent.x > flockXMax){
+    agent.x *= -50.;
   }
 
-  return c;
+  if(agent.y < flockYMin){
+    agent.y *= -50.;
+  } else if(agent.y > flockYMax){
+    agent.y *= -50.;
+  }
+
+  return agent;
+}
+
+vec4 limitVelocity(vec4 agent){
+
+  //limit velocity - boid rule that helps keep everything consistent
+  float vlim = .1;
+  float mag = length( agent.zw );
+  if( mag > vlim ) {
+    agent.zw = (agent.zw / mag ) * vlim;
+  }
+  return agent;
+}
+
+vec4 syncVelocity(vec4 agent){
+  //velocity sync
+  vec2 agentVel = vec2(distance(agent_out.x, agent.x), distance(agent_out.y, agent.y));
+  agent.zw += agentVel;
+
+  //agent = limitVelocity(agent);
+
+  return agent;
+}
+
+vec4 makeGust(vec4 agent, vec2 wind) {
+  vec4 windGust = vec4(0.0, 0.0, 0.0, 0.0);
+  windGust.xy = wind * 0.1;
+  windGust.y = windGust.y * -1.0;
+  return windGust;
 }
 
 /*
-* Boid rule that makes all boids velocity fall in line with each other
+* The preferred location all agents have.
+* it will move 1% of the way to the goal at each step
 */
-vec2 syncVelocity(vec2 boid){
-  vec2 perceivedVelocity = vec2(0.0, 0.0);
-  float perceptionRadius = 100.0;
+vec2 preferredLocation(vec4 agent) {
+  vec2 place = vec2(1.0, -1.0) * (congregateLocation / 10.);
+  return (place - agent.xy) / congregationSpeed;
+}
 
-  //loop through all boids
-  for(int i = 0; i < int( agentCount ); i++){
-    vec4 agent  = texelFetch( flock, ivec2(i,0), 0 );
-    if(boid != agent.xy && distance(agent.xy, boid) < perceptionRadius){
-      vec2 agentVel = ( agent_out.xy - agent.xy) * -.002 / agentCount;
-      perceivedVelocity += agentVel;
-    }
-  }
-  //divide by agentCount
-  float totalAgents = agentCount - 1.0;
-  perceivedVelocity /= vec2(totalAgents, totalAgents);
+vec2 finalVelocityCalculations(vec2 perceivedVelocity, vec4 aOutVel){
+  perceivedVelocity /= (agentCount - 1.0);
+  vec2 newVelocity = perceivedVelocity.xy - aOutVel.zw;
+  newVelocity /= 8.0;
 
-  //subtract current boid velocity
-  //TODO: ?????
-  vec2 boidVel = (agent_out.xy - boid) * -.002 / agentCount;
-  perceivedVelocity -= boidVel;
-
-  float addedVel = 8.0;
-  perceivedVelocity /= vec2(addedVel, addedVel);
-
-  return perceivedVelocity;
+  return newVelocity;
 }
 
 void main() {
@@ -108,6 +105,7 @@ void main() {
   vec2 perceivedCenter = vec2(0.0, 0.0);
   vec2 boidDisplacement = vec2(0.0, 0.0);
   vec2 perceivedVelocity = vec2(0.0, 0.0);
+  float ruleMultiplier = 1.0;
   // loop through all agents...
   for( int i = 0; i < int( agentCount ); i++ ) { 
   
@@ -119,58 +117,46 @@ void main() {
     // vector measured in pixels to determine the location of the
     // texture lookup. 
     vec4 agent  = texelFetch( flock, ivec2(i,0), 0 );
-    
+    agent = bindPositions(agent);
 
-    //vec2 agentVel = ( agent_out.xy - agent.xy) * -.002 / agentCount;
-    vec2 agentVel = vec2(distance(agent_out.x, agent.x), distance(agent_out.y, agent.y));
+    //perceived center and velocity
     perceivedCenter += agent.xy;
-    if(distance(agent.xy, agent_out.xy) < 0.05){
-      boidDisplacement -= (agent.xy - agent_out.xy);
-    }
-    perceivedVelocity += agentVel;
-    //agentVel += goToCenter(agent.xy);
-    //agentVel += keepAway(agent.xy);
-    //agentVel += syncVelocity(agent.xy);
+    perceivedVelocity += syncVelocity(agent).zw;
 
-    // move our agent a small amount towards the ith agent
-    // in the flock.
-    //agent_out.xy += agentVel;
-    //agent_out.xy += keepAway(agent.xy);
+    //keep away rule
+    if(distance(agent.xy, agent_out.xy) < uniBoidDisplacement){
+      boidDisplacement -= 12. * (agent.xy - agent_out.xy);
+    }
+
+    
+    
   }
 
   //get velocity
-  vec2 aOutVel = agent_in.zw;
-  aOutVel = ( agent_out.xy - perceivedCenter) * -.002 / agentCount;
-  
+  vec4 aOutVel = vec4((( agent_out.xy - perceivedCenter) * -.002 / agentCount), agent_in.zw);
 
-  //perceivedCenter work
+  //run post-loop calculations for all three main boid rules
   perceivedCenter = perceivedCenter / vec2(agentCount - 1.0, agentCount - 1.0);
-  //calculate perceivedCenter
-  vec2 newCenter = perceivedCenter.xy - agent_out.xy;
-  //perceivedCenter -= agent.xy;
-  //newCenter /= 100.0;
+  boidDisplacement /= (agentCount - 1.0);
+  perceivedVelocity = finalVelocityCalculations(perceivedVelocity, aOutVel);
 
-  //alter boid displacement
-  boidDisplacement /= agentCount;
+  if(!invertRule){
+    ruleMultiplier = abs(ruleMultiplier);
+  } else {
+    ruleMultiplier = ruleMultiplier * -1.0;
+  }
+  //Call all boid rules
+  //aOutVel.xy += ruleMultiplier * (perceivedCenter.xy - agent_out.xy) * 0.001;
+  aOutVel.xy += ruleMultiplier * boidDisplacement;
+  aOutVel.xy += ruleMultiplier * preferredLocation(agent_out);
+  aOutVel.zw += ruleMultiplier * perceivedVelocity;
+  //aOutVel.xy += ruleMultiplier * makeGust(aOutVel, gustDirection).xy;
 
-  //perceived vel
-  perceivedVelocity = perceivedVelocity / vec2(agentCount - 1.0, agentCount - 1.0);
-  vec2 newVelocity = perceivedVelocity.xy - aOutVel;
-  newVelocity /= 8.0;
-
-  //Add everything to aOutVel
-  aOutVel += (perceivedCenter.xy - agent_out.xy) * 0.001;
-  //aOutVel += boidDisplacement;
-  //aOutVel += newVelocity;
+  //limit velocity before final calculations
+  agent_out = limitVelocity(agent_out);
 
   //add final vel to agent_out
-  agent_out.xy += aOutVel;
-  agent_out.zw = aOutVel;
-  //agent_out.xy += newCenter;
-
-  //agent_out.xy += boidDisplacement;
-
-  //agent_out.xy += perceivedVelocity;
+  agent_out += aOutVel;
 
   // each agent is one pixel. remember, this shader is not used for
   // rendering to the screen, only to our 1D texture array.
