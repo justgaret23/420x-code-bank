@@ -136,7 +136,7 @@ void main() {
   vec4 aOutVel = vec4((( agent_out.xy - perceivedCenter) * -.002 / agentCount), agent_in.zw);
 
   //run post-loop calculations for all three main boid rules
-  perceivedCenter = perceivedCenter / vec2(agentCount - 1.0, agentCount - 1.0);
+  perceivedCenter /= (agentCount - 1.0);
   boidDisplacement /= (agentCount - 1.0);
   perceivedVelocity = finalVelocityCalculations(perceivedVelocity, aOutVel);
 
