@@ -94,8 +94,8 @@
 
       //.025 is .07 - 
 
-      //killRate = killRate * (0.045 + 0.025 * x);
-      //feedRate = feedRate * (0.01 + 0.09 * y);
+      float newKillRate = killRate + (0.01 * (0.045 + 0.025 * x));
+      float newFeedRate = feedRate + (0.01 * (0.01 + 0.09 * y));
 
 
       //if x is 0, kill rate is 0.045 and if x is 1, kill rate is 0.07
@@ -103,14 +103,10 @@
       
       
       //update chemA and chemB
-      float newChemA = chemA + ((diffusionA * laplaceA() ) - (chemA * chemB * chemB) + (feedRate * y * (1. - chemA)));
-      float newChemB = chemB + ((diffusionB * laplaceB() ) + (chemA * chemB * chemB) - ((killRate * x) + feedRate * y * chemB));
+      float newChemA = chemA + ((diffusionA * laplaceA() ) - (chemA * chemB * chemB) + (newFeedRate * (1. - chemA)));
+      float newChemB = chemB + ((diffusionB * laplaceB() ) + (chemA * chemB * chemB) - ((newKillRate + newFeedRate) * chemB));
 
-      if(laplaceB() > laplaceA()){
-        gl_FragColor = vec4( newChemA, 0., newChemB, 1. );
-      } else {
-        gl_FragColor = vec4( newChemA, 0.,newChemB, 1. );
-      }
+      gl_FragColor = vec4( newChemA, 0., newChemB, 1. );
       
     }
   </script>

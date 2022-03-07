@@ -72,7 +72,7 @@
       
       //maybe don't Modify - param - 0. - 3.
       vec3 h = abs(x) - 2.;
-      vec3 ox = floor(x + 0.5);
+      vec3 ox = floor(x + bubbleFrequency);
       vec3 a0 = x - ox;
       m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
       vec3 g;
@@ -106,7 +106,7 @@
       DF += snoise(pos+vel)*.25+.25;
 
       //Modify first smoothstep param - 0.4 - 0.75
-      color += (vec3( smoothstep(bubbleSize,.75,fract(DF)) ) * noiseColor);
+      color += (vec3( smoothstep(bubbleSize,.75,fract(DF)) ) * noiseColor/255.);
 
       //vec3 noise = (vec3( pow(random( st  ), 10.)) * noiseColor) ;
     
@@ -117,7 +117,8 @@
 
   <script type='text/javascript'>
     // kinda global variables... upvalues to each closure of each function in this script tag
-    let gl, uTime, uRes, uColor, uBubbleDensity, uBubbleSize, uBubbleDistortion, uMouseX, uMouseY, drawProgram, videoTexture, PARAMS;
+    let gl, uTime, uRes, uColor, uBubbleDensity, uBubbleSize, uBubbleDistortion, uMouseX, uMouseY, drawProgram, videoTexture,
+    uBubbleFrequency, PARAMS;
 
     const size = 768
     window.onload = function() {
@@ -197,6 +198,7 @@
       uBubbleDensity = gl.getUniformLocation(drawProgram, 'bubbleDensity');
       uBubbleSize = gl.getUniformLocation(drawProgram, 'bubbleSize');
       uBubbleDistortion = gl.getUniformLocation(drawProgram, 'bubbleDistortion');
+      uBubbleFrequency = gl.getUniformLocation(drawProgram, 'bubbleFrequency');
       uMouseX = gl.getUniformLocation(drawProgram, 'mouse_x');
       uMouseY = gl.getUniformLocation(drawProgram, 'mouse_y');
       // send uniform values for uRes up to gpu
@@ -210,7 +212,8 @@
           color: {r: 255, g: 127, b: 0},
           bubbleDensity: 4.0,
           bubbleSize: 0.5,
-          bubbleDistortion: 1.0
+          bubbleDistortion: 1.0,
+          bubbleFrequency: 1.0,
       }
       //MOUSE EVENTS!
 
@@ -260,6 +263,10 @@
       pane.addInput(PARAMS, 'bubbleDistortion', {
         min: 0.1,
         max: 20.0,
+      });
+      pane.addInput(PARAMS, 'bubbleFrequency', {
+        min: 0.1,
+        max: 3.0,
       });
 
       // get position attribute location in shader
@@ -350,6 +357,7 @@
       gl.uniform1f(uBubbleDensity, PARAMS.bubbleDensity);
       gl.uniform1f(uBubbleSize, PARAMS.bubbleSize);
       gl.uniform1f(uBubbleDistortion, PARAMS.bubbleDistortion);
+      gl.uniform1f(uBubbleFrequency, PARAMS.bubbleFrequency);
       gl.uniform3f( uColor, PARAMS.color.r, PARAMS.color.g, PARAMS.color.b )
 
       gl.texImage2D( 

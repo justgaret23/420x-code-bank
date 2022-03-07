@@ -11,7 +11,8 @@ let gl,
   simulationProgram, simulationPosition,
   renderProgram,
   buffers, uTime, uBoidDisplacement, uGustDirection,
-  uCongregateLocation, uCongregationSpeed, uInvertRule;
+  uCongregateLocation, uCongregationSpeed, uInvertRule,
+  uDistMultiplier;
 
 const textures = [],
       agentCount = 500
@@ -40,6 +41,7 @@ function render() {
   time++
   gl.uniform1f(uTime, time)  
   gl.uniform1f(uBoidDisplacement, PARAMS.uniBoidDisplacement);
+  gl.uniform1f(uDistMultiplier, PARAMS.distMultiplier);
   gl.uniform1f(uCongregationSpeed, PARAMS.congregationSpeed);
   gl.uniform1f(uInvertRule, PARAMS.invertRule);
   gl.uniform2f(uCongregateLocation, PARAMS.congregateLocation.x, PARAMS.congregateLocation.y);
@@ -125,6 +127,7 @@ function makeSimulationUniforms() {
   gl.uniform1f(count, agentCount)
   uTime = gl.getUniformLocation(simulationProgram, 'time')
   uBoidDisplacement = gl.getUniformLocation(simulationProgram, 'uniBoidDisplacement');
+  uDistMultiplier = gl.getUniformLocation(simulationProgram, 'distMultiplier');
   uGustDirection = gl.getUniformLocation(simulationProgram, 'gustDirection');
   uCongregateLocation = gl.getUniformLocation(simulationProgram, 'congregateLocation');
   uCongregationSpeed = gl.getUniformLocation(simulationProgram, 'congregationSpeed');
@@ -132,6 +135,7 @@ function makeSimulationUniforms() {
   
   PARAMS = {
     uniBoidDisplacement: 0.1,
+    distMultiplier: 2.0,
     gustDirection: { x: 0.000, y: 0.000 },
     congregateLocation: { x: 0.5, y: 0.5 },
     congregationSpeed: 1000.0,
@@ -143,6 +147,10 @@ function makeSimulationUniforms() {
   pane.addInput(PARAMS, 'uniBoidDisplacement', {
     min: 0.01,
     max: 0.3,
+  });
+  pane.addInput(PARAMS, 'distMultiplier', {
+    min: 1.0,
+    max: 20.0,
   });
   pane.addInput(PARAMS, 'congregationSpeed', {
     min: 500,

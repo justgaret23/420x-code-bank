@@ -190,7 +190,7 @@
     
     void main() {
       vec3 color = o_vpos[3] == 0. ? vec3(1.,0.,0.) : vec3(0.,0.,1.);
-      o_frag = vec4( slimeColor, 0.25);
+      o_frag = vec4( slimeColor / 255., 0.25);
     } 
 </script>
 
@@ -421,7 +421,7 @@
         sensorMultiplier: 20.7,
         rotateMultiplier: 1.0,
         agentSize: 0.5,
-        slimeColor: {r: 0.5, g: 1.0, b: 1.0},
+        slimeColor: {r: 93, g: 217, b: 217},
         directionDistance: 1.0,
         offsetMultiplier: 1.0,
         burst: false,
